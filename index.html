@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Genecopoeia Signal Engine</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Biotech commercial analytics</p>
+        <h1>Genecopoeia Signal Engine</h1>
+      </div>
+      <div class="header-actions">
+        <button id="loadDemo" type="button" class="secondary">Load synthetic demo</button>
+        <button id="resetData" type="button" class="ghost">Reset</button>
+        <a id="exportProductsCsv" class="button secondary" href="/api/export/products.csv">Export products</a>
+        <a id="exportProductsEvidenceCsv" class="button secondary" href="/api/export/products-evidence.csv">Export products + evidence</a>
+        <a id="exportCsv" class="button secondary" href="/api/export/evidence.csv">Export evidence</a>
+        <a id="exportReport" class="button" href="/api/export/report.html" target="_blank" rel="noreferrer">PDF-ready report</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar" aria-label="Controls">
+        <section class="panel">
+          <div class="section-header">
+            <h2>Product Registry</h2>
+            <button id="newProduct" type="button" class="ghost">New</button>
+          </div>
+          <label>
+            Search
+            <input id="productSearch" autocomplete="off" placeholder="Company, product, catalog, RRID">
+          </label>
+          <div id="productResults" class="compact-list product-results" tabindex="0"></div>
+          <div class="pager" aria-label="Product Registry pages">
+            <button id="prevProductPage" type="button" class="ghost">Previous</button>
+            <span id="productPageInfo" class="count">0-0 of 0 | Page 1 of 1</span>
+            <button id="nextProductPage" type="button" class="ghost">Next</button>
+          </div>
+
+          <form id="productCatalogForm" class="stack catalog-import">
+            <div class="section-header">
+              <h3>Catalog Import</h3>
+              <select id="productCatalogFormat" aria-label="Product catalog format">
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+              </select>
+            </div>
+            <label>
+              Product catalog
+              <textarea id="productCatalogPayload" rows="4" spellcheck="false" placeholder="Paste GeneCopoeia product JSON or CSV. Required: productName, productType, applicationArea."></textarea>
+            </label>
+            <button type="submit" class="secondary">Import product catalog</button>
+          </form>
+
+          <form id="productForm" class="stack">
+            <input id="productId" type="hidden">
+            <label>
+              Company
+              <input id="productCompany" required value="GeneCopoeia">
+            </label>
+            <label>
+              Product name
+              <input id="productName" required>
+            </label>
+            <div class="two-col">
+              <label>
+                Catalog
+                <input id="catalogNumber">
+              </label>
+              <label>
+                RRID
+                <input id="rrid">
+              </label>
+            </div>
+            <label>
+              Product type
+              <input id="productType" required>
+            </label>
+            <label>
+              Application area
+              <input id="applicationArea" required>
+            </label>
+            <label>
+              Synonyms
+              <textarea id="synonyms" rows="2"></textarea>
+            </label>
+            <label>
+              Competitor equivalents
+              <textarea id="competitors" rows="2"></textarea>
+            </label>
+            <label>
+              Internal owner
+              <input id="internalOwner">
+            </label>
+            <div class="button-row">
+              <button type="submit">Save product</button>
+              <button id="deleteProduct" type="button" class="danger">Delete</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="section-header">
+            <h2>Source Connectors</h2>
+            <button id="runConnectors" type="button" class="secondary">Run all</button>
+          </div>
+          <p class="helper">Automated hits import as low-confidence candidates until reviewed.</p>
+          <div id="connectorList" class="connector-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Filters</h2>
+          <form id="filterForm" class="stack">
+            <label>
+              Product
+              <select id="filterProduct"></select>
+            </label>
+            <label>
+              Source type
+              <select id="filterSource">
+                <option value="">All sources</option>
+                <option value="publication">Publication</option>
+                <option value="patent">Patent</option>
+                <option value="trial">Clinical trial</option>
+                <option value="grant">Grant</option>
+                <option value="protocol">Protocol</option>
+                <option value="conference_abstract">Conference abstract</option>
+                <option value="social_mention">Social mention</option>
+              </select>
+            </label>
+            <label>
+              Review status
+              <select id="filterReview">
+                <option value="">All statuses</option>
+                <option value="candidate">Candidate</option>
+                <option value="curated">Curated proof</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </label>
+            <label>
+              Application
+              <input id="filterApplication">
+            </label>
+            <label>
+              Country
+              <input id="filterCountry">
+            </label>
+            <div class="two-col">
+              <label>
+                Start
+                <input id="filterStart" type="date">
+              </label>
+              <label>
+                End
+                <input id="filterEnd" type="date">
+              </label>
+            </div>
+            <div class="button-row">
+              <button type="submit">Apply</button>
+              <button id="clearFilters" type="button" class="ghost">Clear</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Evidence Ingestion</h2>
+          <form id="ingestForm" class="stack">
+            <label>
+              Format
+              <select id="ingestFormat">
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+                <option value="api">API-like JSON</option>
+              </select>
+            </label>
+            <label>
+              Payload
+              <textarea id="ingestPayload" rows="8" spellcheck="false"></textarea>
+            </label>
+            <button type="submit">Import evidence</button>
+          </form>
+          <p id="message" class="message" role="status"></p>
+        </section>
+      </aside>
+
+      <section class="workspace" aria-label="Analytics workspace">
+        <section class="kpi-grid" aria-label="Overview KPIs">
+          <article class="kpi"><span>Products</span><strong id="kpiProducts">0</strong></article>
+          <article class="kpi"><span>Mentions</span><strong id="kpiMentions">0</strong></article>
+          <article class="kpi"><span>Revenue</span><strong id="kpiRevenue">$0</strong></article>
+          <article class="kpi"><span>Repeat purchase</span><strong id="kpiRepeat">0%</strong></article>
+          <article class="kpi"><span>Confidence</span><strong id="kpiConfidence">0%</strong></article>
+        </section>
+
+        <nav class="tabs" aria-label="Dashboard views">
+          <button class="tab active" type="button" data-view="overview">Overview</button>
+          <button class="tab" type="button" data-view="productDetail">Product detail</button>
+          <button class="tab" type="button" data-view="evidenceExplorer">Evidence</button>
+          <button class="tab" type="button" data-view="leadList">Leads</button>
+          <button class="tab" type="button" data-view="competitorsView">Competitors</button>
+          <button class="tab" type="button" data-view="alertsView">Alerts</button>
+        </nav>
+
+        <section id="overview" class="view active">
+          <div class="view-grid">
+            <section class="analysis-block">
+              <h2>Mentions By Source</h2>
+              <div id="sourceChart" class="bar-list"></div>
+            </section>
+            <section class="analysis-block">
+              <h2>Mentions Over Time</h2>
+              <div id="timeChart" class="bar-list"></div>
+            </section>
+            <section class="analysis-block">
+              <h2>Top Institutions</h2>
+              <div id="institutionList" class="rank-list"></div>
+            </section>
+            <section class="analysis-block">
+              <h2>Top Authors</h2>
+              <div id="authorList" class="rank-list"></div>
+            </section>
+          </div>
+          <section class="analysis-block">
+            <div class="section-header">
+              <h2>Product Performance</h2>
+              <span id="performanceCount" class="count">0 products</span>
+            </div>
+            <div id="performanceTable" class="table-wrap"></div>
+          </section>
+        </section>
+
+        <section id="productDetail" class="view">
+          <div class="section-header">
+            <h2 id="detailTitle">Product detail</h2>
+            <div class="detail-actions">
+              <select id="detailProduct"></select>
+              <button id="runSelectedProduct" type="button" class="secondary">Run evidence search</button>
+              <button id="runDeepPublicationSearch" type="button" class="secondary">Deep publication search</button>
+            </div>
+          </div>
+          <div id="productSummary" class="summary-grid"></div>
+          <section class="analysis-block">
+            <h2>Product Evidence</h2>
+            <div id="productEvidence" class="table-wrap"></div>
+          </section>
+        </section>
+
+        <section id="evidenceExplorer" class="view">
+          <div class="section-header">
+            <h2>Evidence Explorer</h2>
+            <span id="evidenceCount" class="count">0 records</span>
+          </div>
+          <div id="evidenceTable" class="table-wrap"></div>
+        </section>
+
+        <section id="leadList" class="view">
+          <div class="section-header">
+            <h2>Lead List</h2>
+            <span id="leadCount" class="count">0 leads</span>
+          </div>
+          <div id="leads" class="lead-list"></div>
+        </section>
+
+        <section id="competitorsView" class="view">
+          <h2>Competitive Share Of Voice</h2>
+          <div id="shareOfVoice" class="bar-list"></div>
+          <section class="analysis-block">
+            <h2>Citation To Revenue</h2>
+            <div id="citationRevenue" class="table-wrap"></div>
+          </section>
+        </section>
+
+        <section id="alertsView" class="view">
+          <div class="section-header">
+            <h2>Alerts</h2>
+            <span id="alertCount" class="count">0 alerts</span>
+          </div>
+          <div id="alerts" class="alert-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "gene-disease-decision-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Evidence-grounded gene-disease hypothesis prioritization and experiment planning app.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
+  }
+}
