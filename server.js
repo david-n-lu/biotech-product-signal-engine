@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createConnectorScheduler } from "./src/platform/connectorScheduler.js";
+import { createCompanyCorpusStore } from "./src/platform/companyCorpusStore.js";
+import { linkCompanyCorpusRecordsToProducts } from "./src/platform/companyCorpus.js";
 import { evaluateAlerts } from "./src/platform/alerts.js";
 import { buildAnalytics, filterEvidence } from "./src/platform/analytics.js";
 import {
@@ -22,8 +24,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 4173);
 const repository = createRepository();
-const connectorScheduler = createConnectorScheduler(repository);
+const companyCorpusStore = createCompanyCorpusStore(
+  path.join(__dirname, "data", "genecopoeia-publication-corpus.csv"),
+  { legacyPaths: [path.join(__dirname, "data", "genecopoeia-europepmc-corpus.csv")] }
+);
+const connectorScheduler = createConnectorScheduler(repository, { companyCorpusStore });
 connectorScheduler.start();
+
+const CORPUS_SOURCE_LABELS = {
+  pubmed_publications: "pubmed",
+  europepmc_fulltext_publications: "europepmc",
+  biorxiv_preprints: "biorxiv",
+  crossref_conferences: "crossref"
+};
 
 const server = createServer(async (request, response) => {
   try {
@@ -79,7 +92,9 @@ async function handleApi(request, response, url) {
       return;
     }
     if (method === "POST") {
-      sendJson(response, 201, { product: repository.createProduct(await readJson(request)) });
+      const product = repository.createProduct(await readJson(request));
+      const corpus = await relinkCompanyCorpus([product.id]);
+      sendJson(response, 201, { product, corpus });
       return;
     }
   }
@@ -94,7 +109,9 @@ async function handleApi(request, response, url) {
       sendJson(response, 400, { imported: 0, products: [], errors: parsed.errors });
       return;
     }
-    sendJson(response, 200, repository.importProducts(parsed.products));
+    const result = repository.importProducts(parsed.products);
+    const corpus = await relinkCompanyCorpus(result.products.map((product) => product.id));
+    sendJson(response, 200, { ...result, corpus });
     return;
   }
 
@@ -114,7 +131,9 @@ async function handleApi(request, response, url) {
       return;
     }
     if (method === "PUT") {
-      sendJson(response, 200, { product: repository.updateProduct(id, await readJson(request)) });
+      const product = repository.updateProduct(id, await readJson(request));
+      const corpus = await relinkCompanyCorpus([product.id]);
+      sendJson(response, 200, { product, corpus });
       return;
     }
     if (method === "DELETE") {
@@ -138,6 +157,17 @@ async function handleApi(request, response, url) {
 
   if (method === "GET" && pathname === "/api/connectors") {
     sendJson(response, 200, connectorScheduler.list());
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/company-corpus") {
+    sendJson(response, 200, await companyCorpusStore.stats(corpusFiltersFromQuery(url.searchParams)));
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/company-corpus/relink") {
+    const payload = await readJson(request);
+    sendJson(response, 200, await relinkCompanyCorpus(payload.productIds || [], corpusConnectorIdsFromPayload(payload)));
     return;
   }
 
@@ -247,6 +277,14 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (method === "GET" && pathname === "/api/export/company-corpus.csv") {
+    const filters = corpusFiltersFromQuery(url.searchParams);
+    sendText(response, 200, await companyCorpusStore.exportCsv(filters), "text/csv; charset=utf-8", {
+      "Content-Disposition": `attachment; filename="${companyCorpusExportFilename(filters.connectorIds)}"`
+    });
+    return;
+  }
+
   if (method === "GET" && pathname === "/api/export/report.html") {
     const state = repository.snapshot();
     const filters = filtersFromQuery(url.searchParams);
@@ -258,6 +296,54 @@ async function handleApi(request, response, url) {
   }
 
   throw httpError(404, `No route for ${method} ${pathname}.`);
+}
+
+async function relinkCompanyCorpus(productIds = [], connectorIds = []) {
+  const state = repository.snapshot();
+  const idSet = new Set(productIds || []);
+  const products = idSet.size
+    ? state.products.filter((product) => idSet.has(product.id))
+    : state.products;
+  if (!products.length) return { imported: 0, records: [], errors: [] };
+
+  try {
+    const corpusRecords = await companyCorpusStore.listRecords({ connectorIds });
+    const linkedRecords = linkCompanyCorpusRecordsToProducts(corpusRecords, products, { now: new Date() });
+    if (!linkedRecords.length) {
+      return { imported: 0, records: [], errors: [], corpusRecords: corpusRecords.length };
+    }
+    return {
+      ...repository.ingestEvidence(linkedRecords, "company_corpus"),
+      corpusRecords: corpusRecords.length
+    };
+  } catch (error) {
+    return { imported: 0, records: [], errors: [`Company corpus relink failed: ${error.message}`] };
+  }
+}
+
+function corpusFiltersFromQuery(searchParams) {
+  return {
+    connectorIds: corpusConnectorIds(searchParams.get("connectorId") || searchParams.get("connectorIds") || "")
+  };
+}
+
+function corpusConnectorIdsFromPayload(payload) {
+  return corpusConnectorIds(payload.connectorIds || payload.connectorId || "");
+}
+
+function corpusConnectorIds(value) {
+  const list = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[;,|]/);
+  return list.map((item) => String(item || "").trim()).filter((item) => item && item !== "all");
+}
+
+function companyCorpusExportFilename(connectorIds = []) {
+  if (!connectorIds.length) return "genecopoeia-publication-corpus.csv";
+  const source = connectorIds.length === 1
+    ? CORPUS_SOURCE_LABELS[connectorIds[0]] || connectorIds[0].replace(/[^a-z0-9]+/gi, "-")
+    : "selected-sources";
+  return `genecopoeia-${source}-corpus.csv`;
 }
 
 async function ingestJson(request) {

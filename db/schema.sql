@@ -78,6 +78,29 @@ CREATE TABLE evidence_records (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE company_corpus_records (
+  id TEXT PRIMARY KEY,
+  company_id TEXT REFERENCES companies(id),
+  source_type TEXT NOT NULL DEFAULT 'publication',
+  source_title TEXT NOT NULL,
+  source_url TEXT,
+  source_id TEXT,
+  source_date DATE,
+  authors_text TEXT,
+  institution_name TEXT,
+  country TEXT,
+  context_label TEXT NOT NULL DEFAULT 'unclear',
+  europe_pmc_sentences TEXT NOT NULL,
+  review_status TEXT NOT NULL DEFAULT 'candidate' CHECK (review_status IN ('candidate', 'curated', 'rejected')),
+  connector_id TEXT NOT NULL,
+  confidence_score NUMERIC(4,3) NOT NULL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+  product_mention_type TEXT NOT NULL DEFAULT 'company_context',
+  raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (connector_id, source_id, europe_pmc_sentences)
+);
+
 CREATE TABLE evidence_authors (
   evidence_id TEXT NOT NULL REFERENCES evidence_records(id) ON DELETE CASCADE,
   author_name TEXT NOT NULL,
@@ -155,6 +178,8 @@ CREATE TABLE generated_alerts (
 );
 
 CREATE INDEX idx_evidence_source_date ON evidence_records (source_type, source_date);
+CREATE INDEX idx_company_corpus_source_date ON company_corpus_records (source_type, source_date);
+CREATE INDEX idx_company_corpus_context ON company_corpus_records USING gin (to_tsvector('english', europe_pmc_sentences));
 CREATE INDEX idx_evidence_country ON evidence_records (country);
 CREATE INDEX idx_mentions_product ON product_evidence_mentions (product_id, evidence_id);
 CREATE INDEX idx_sales_product_date ON sales_records (product_id, order_date);

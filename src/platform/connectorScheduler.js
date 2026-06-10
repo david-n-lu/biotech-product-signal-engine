@@ -1,7 +1,9 @@
 import { createConnectorConfigs, runSourceConnectors } from "./sourceConnectors.js";
+import { linkCompanyCorpusRecordsToProducts } from "./companyCorpus.js";
 
 export function createConnectorScheduler(repository, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const companyCorpusStore = options.companyCorpusStore;
   let connectors = createConnectorConfigs(options.connectors || []);
   const timers = new Map();
   const runs = [];
@@ -68,11 +70,17 @@ export function createConnectorScheduler(repository, options = {}) {
         perProductLimit: runOptions.perProductLimit ?? options.perProductLimit,
         searchMode: runOptions.searchMode || "standard"
       });
-      const ingest = result.records.length
-        ? repository.ingestEvidence(result.records, "source_connectors")
+      const corpusSave = await saveCompanyCorpus(result.corpusRecords || []);
+      const corpusLinked = await linkCompanyCorpus(products, now, corpusSave.connectorIds || []);
+      const recordsToIngest = dedupeRecords([
+        ...result.records,
+        ...corpusLinked.records
+      ]);
+      const ingest = recordsToIngest.length
+        ? repository.ingestEvidence(recordsToIngest, "source_connectors")
         : { imported: 0, errors: [] };
       const finishedAt = new Date();
-      const errors = [...result.errors, ...(ingest.errors || [])];
+      const errors = [...result.errors, ...(corpusSave.errors || []), ...(corpusLinked.errors || []), ...(ingest.errors || [])];
       const notices = result.notices || [];
       const run = {
         id: `RUN-${runs.length + 1}`,
@@ -81,6 +89,10 @@ export function createConnectorScheduler(repository, options = {}) {
         startedAt: now.toISOString(),
         finishedAt: finishedAt.toISOString(),
         imported: ingest.imported || 0,
+        corpusSaved: corpusSave.saved || 0,
+        corpusTotal: corpusSave.total || 0,
+        corpusLinked: corpusLinked.records.length,
+        corpusPath: corpusSave.filePath || "",
         errors,
         notices,
         connectorRuns: result.runs,
@@ -130,10 +142,54 @@ export function createConnectorScheduler(repository, options = {}) {
       };
     }
   }
+
+  async function saveCompanyCorpus(records) {
+    if (!companyCorpusStore || !records.length) {
+      return { saved: 0, total: 0, errors: [] };
+    }
+    try {
+      return {
+        errors: [],
+        connectorIds: unique(records.map((record) => record.connectorId).filter(Boolean)),
+        ...await companyCorpusStore.upsertRecords(records)
+      };
+    } catch (error) {
+      return {
+        saved: 0,
+        total: 0,
+        errors: [`Company corpus save failed: ${error.message}`]
+      };
+    }
+  }
+
+  async function linkCompanyCorpus(productsToLink, now, connectorIds = []) {
+    if (!companyCorpusStore || !productsToLink.length) return { records: [], errors: [] };
+    try {
+      const corpusRecords = await companyCorpusStore.listRecords({ connectorIds });
+      return {
+        records: linkCompanyCorpusRecordsToProducts(corpusRecords, productsToLink, { now }),
+        errors: []
+      };
+    } catch (error) {
+      return {
+        records: [],
+        errors: [`Company corpus relink failed: ${error.message}`]
+      };
+    }
+  }
 }
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function dedupeRecords(records) {
+  return [...new Map((records || []).map((record) => [record.id, record])).values()]
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function unique(values) {
+  return [...new Set(values)];
 }
 
 function httpError(status, message) {

@@ -1,4 +1,5 @@
 import { evidenceForProduct } from "./evidenceFiltering.js";
+import { europePmcSentencesText } from "./europePmcSentences.js";
 
 export function exportEvidenceCsv(evidence, products = []) {
   const productMap = new Map((products || []).map((product) => [product.id, product]));
@@ -15,6 +16,7 @@ export function exportEvidenceCsv(evidence, products = []) {
     "institution",
     "country",
     "contextLabel",
+    "europePmcSentences",
     "reviewStatus",
     "connectorId",
     "confidenceScore",
@@ -36,6 +38,7 @@ export function exportEvidenceCsv(evidence, products = []) {
     institution: record.institution || "",
     country: record.country || "",
     contextLabel: record.contextLabel,
+    europePmcSentences: evidenceEuropePmcSentences(record),
     reviewStatus: record.reviewStatus,
     connectorId: record.connectorId || "",
     confidenceScore: record.confidenceScore,
@@ -117,6 +120,7 @@ export function exportProductEvidenceCsv(products = [], evidence = []) {
     "institution",
     "country",
     "contextLabel",
+    "europePmcSentences",
     "reviewStatus",
     "connectorId",
     "confidenceScore",
@@ -232,6 +236,7 @@ function productEvidenceRow(product, record = undefined) {
     institution: record?.institution || "",
     country: record?.country || "",
     contextLabel: record?.contextLabel || "",
+    europePmcSentences: evidenceEuropePmcSentences(record),
     reviewStatus: record?.reviewStatus || "",
     connectorId: record?.connectorId || "",
     confidenceScore: record?.confidenceScore ?? "",
@@ -241,6 +246,10 @@ function productEvidenceRow(product, record = undefined) {
     competitors: productCompetitors(record, product.id),
     provenance: record?.sourceUrl || record?.sourceId || ""
   };
+}
+
+function evidenceEuropePmcSentences(record) {
+  return europePmcSentencesText(record);
 }
 
 function productMention(record, productId) {

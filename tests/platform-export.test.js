@@ -42,6 +42,7 @@ test("CSV export includes catalog number and product name columns", () => {
     authors: ["Curator A"],
     institution: "Example Institute",
     contextLabel: "core_method",
+    europePmcSentences: "Nearby Europe PMC sentence mentions GeneCopoeia PA001.",
     reviewStatus: "candidate",
     confidenceScore: 0.3,
     products: [{
@@ -52,7 +53,9 @@ test("CSV export includes catalog number and product name columns", () => {
 
   const [header, row] = csv.split("\n");
   assert.match(header, /^id,catalogNumber,productName,sourceType/);
+  assert.match(header, /contextLabel,europePmcSentences,reviewStatus/);
   assert.match(row, /^EV-PA001,PA001,OmicsArray Systemic array,publication/);
+  assert.match(row, /Nearby Europe PMC sentence mentions GeneCopoeia PA001/);
   assert.doesNotMatch(row, /Old display name/);
 });
 
@@ -62,6 +65,31 @@ test("CSV export filename is based on selected catalog and product name", () => 
     "genecopoeia-PA001-OmicsArray-Systemic-array-evidence.csv"
   );
   assert.equal(exportEvidenceFilename(), "genecopoeia-evidence.csv");
+});
+
+test("CSV export leaves synthetic Europe PMC query prefixes out of sentence context", () => {
+  const csv = exportEvidenceCsv([{
+    id: "EV-LEGACY",
+    sourceType: "publication",
+    sourceTitle: "Europe PMC: legacy record",
+    sourceUrl: "https://europepmc.org/article/MED/1",
+    sourceId: "1",
+    date: "2026-01-02",
+    institution: "Example Institute",
+    snippet: "Europe PMC matched GeneCopoeia PA001 in publication metadata or searchable full text. The nearby legacy snippet is still available for review.",
+    contextLabel: "unclear",
+    reviewStatus: "candidate",
+    connectorId: "europepmc_fulltext_publications",
+    confidenceScore: 0.3,
+    products: [{
+      productId: "PROD-PA001",
+      productName: "OmicsArray Systemic array"
+    }]
+  }], products);
+  const [header, row] = csv.split("\n");
+  const values = row.split(",");
+
+  assert.equal(values[header.split(",").indexOf("europePmcSentences")], "");
 });
 
 test("CSV export filters can resolve product by catalog number and product name", () => {
@@ -109,6 +137,7 @@ test("combined product-evidence CSV exports every product with linked evidence",
     institution: "Example Institute",
     country: "US",
     contextLabel: "core_method",
+    europePmcSentences: "Nearby Europe PMC sentence mentions GeneCopoeia PA001.",
     reviewStatus: "candidate",
     connectorId: "europepmc_fulltext_publications",
     confidenceScore: 0.3,
@@ -128,10 +157,13 @@ test("combined product-evidence CSV exports every product with linked evidence",
   const lines = csv.split("\n");
 
   assert.match(lines[0], /^productId,company,productName,catalogNumber,rrid,productType/);
+  assert.match(lines[0], /contextLabel,europePmcSentences,reviewStatus/);
   assert.equal(lines.length, 3);
   assert.match(lines[1], /^PROD-PA001,GeneCopoeia,OmicsArray Systemic array,PA001/);
   assert.match(lines[1], /EV-PA001,publication,Europe PMC: current systemic array record/);
+  assert.match(lines[1], /Nearby Europe PMC sentence mentions GeneCopoeia PA001/);
   assert.match(lines[1], /PA001,0.95,Competitor X/);
   assert.match(lines[2], /^PROD-BI001,GeneCopoeia,Biotin protein ligase,BI001/);
-  assert.match(lines[2], /,,,,,,,,,,,,,,,,,$/);
+  assert.equal(lines[2].split(",")[lines[0].split(",").indexOf("evidenceId")], "");
+  assert.equal(lines[2].split(",")[lines[0].split(",").indexOf("europePmcSentences")], "");
 });

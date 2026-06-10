@@ -1,4 +1,5 @@
 import { getEvidenceSourceLink } from "./platform/evidenceLinks.js";
+import { europePmcSentencesText } from "./platform/europePmcSentences.js";
 import { evidenceForProduct } from "./platform/evidenceFiltering.js";
 import { evidenceTableHeaders } from "./platform/evidenceTableColumns.js";
 import { buildLocalWorkspaceSnapshot, resolveSavedSelectedProductId } from "./platform/localWorkspace.js";
@@ -11,6 +12,12 @@ const PUBLICATION_CONNECTOR_IDS = [
   "europepmc_fulltext_publications",
   "biorxiv_preprints"
 ];
+const TEN_YEAR_PUBLICATION_CONNECTOR_IDS = [
+  "pubmed_publications",
+  "europepmc_fulltext_publications",
+  "biorxiv_preprints",
+  "crossref_conferences"
+];
 
 const state = {
   products: [],
@@ -19,6 +26,8 @@ const state = {
   salesRecords: [],
   connectors: [],
   connectorRuns: [],
+  companyCorpus: null,
+  companyCorpusConnectorId: "",
   analytics: null,
   leads: [],
   alerts: [],
@@ -32,7 +41,13 @@ const elements = {
   loadDemo: document.querySelector("#loadDemo"),
   resetData: document.querySelector("#resetData"),
   exportCsv: document.querySelector("#exportCsv"),
+  exportCompanyCorpusCsv: document.querySelector("#exportCompanyCorpusCsv"),
   runConnectors: document.querySelector("#runConnectors"),
+  runBatchDeepPublications: document.querySelector("#runBatchDeepPublications"),
+  runBatchEuropePmc10y: document.querySelector("#runBatchEuropePmc10y"),
+  relinkCompanyCorpus: document.querySelector("#relinkCompanyCorpus"),
+  companyCorpusSource: document.querySelector("#companyCorpusSource"),
+  companyCorpusStatus: document.querySelector("#companyCorpusStatus"),
   connectorList: document.querySelector("#connectorList"),
   productSearch: document.querySelector("#productSearch"),
   productResults: document.querySelector("#productResults"),
@@ -41,6 +56,7 @@ const elements = {
   nextProductPage: document.querySelector("#nextProductPage"),
   productCatalogForm: document.querySelector("#productCatalogForm"),
   productCatalogFormat: document.querySelector("#productCatalogFormat"),
+  productCatalogFile: document.querySelector("#productCatalogFile"),
   productCatalogPayload: document.querySelector("#productCatalogPayload"),
   productForm: document.querySelector("#productForm"),
   productId: document.querySelector("#productId"),
@@ -83,6 +99,7 @@ const elements = {
   detailProduct: document.querySelector("#detailProduct"),
   runSelectedProduct: document.querySelector("#runSelectedProduct"),
   runDeepPublicationSearch: document.querySelector("#runDeepPublicationSearch"),
+  runEuropePmc10ySearch: document.querySelector("#runEuropePmc10ySearch"),
   productSummary: document.querySelector("#productSummary"),
   productEvidence: document.querySelector("#productEvidence"),
   evidenceCount: document.querySelector("#evidenceCount"),
@@ -120,6 +137,14 @@ function bindEvents() {
   });
 
   elements.runConnectors.addEventListener("click", runAllConnectors);
+  elements.runBatchDeepPublications.addEventListener("click", runBatchDeepPublicationSearch);
+  elements.runBatchEuropePmc10y.addEventListener("click", runBatchEuropePmc10ySearch);
+  elements.relinkCompanyCorpus.addEventListener("click", relinkSavedCompanyCorpus);
+  elements.companyCorpusSource.addEventListener("change", async () => {
+    state.companyCorpusConnectorId = elements.companyCorpusSource.value;
+    renderExportLinks();
+    await refreshAll();
+  });
   elements.productSearch.addEventListener("input", () => {
     state.productPageIndex = 0;
     renderProductResults();
@@ -132,12 +157,14 @@ function bindEvents() {
   });
   elements.prevProductPage.addEventListener("click", () => changeProductPage(-1));
   elements.nextProductPage.addEventListener("click", () => changeProductPage(1));
+  elements.productCatalogFile.addEventListener("change", loadProductCatalogFile);
   elements.productCatalogForm.addEventListener("submit", importProductCatalog);
   elements.newProduct.addEventListener("click", clearProductForm);
   elements.productForm.addEventListener("submit", saveProduct);
   elements.deleteProduct.addEventListener("click", deleteSelectedProduct);
   elements.runSelectedProduct.addEventListener("click", runSelectedProductSearch);
   elements.runDeepPublicationSearch.addEventListener("click", runDeepPublicationSearch);
+  elements.runEuropePmc10ySearch.addEventListener("click", runEuropePmc10ySearch);
   elements.filterForm.addEventListener("submit", applyFilters);
   elements.clearFilters.addEventListener("click", clearFilters);
   elements.ingestForm.addEventListener("submit", ingestEvidence);
@@ -170,12 +197,13 @@ async function refreshAll() {
   }
 
   const query = filterQuery();
-  const [analytics, leadsResult, alertsResult, connectorsResult, evidenceResult] = await Promise.all([
+  const [analytics, leadsResult, alertsResult, connectorsResult, evidenceResult, companyCorpus] = await Promise.all([
     fetchJson(`/api/analytics${query}`),
     fetchJson(`/api/leads${query}`),
     fetchJson("/api/alerts"),
     fetchJson("/api/connectors"),
-    fetchJson(`/api/evidence${query}`)
+    fetchJson(`/api/evidence${query}`),
+    fetchJson(`/api/company-corpus${companyCorpusQuery()}`)
   ]);
 
   state.analytics = analytics;
@@ -184,6 +212,7 @@ async function refreshAll() {
   state.connectors = connectorsResult.connectors || [];
   state.connectorRuns = connectorsResult.runs || [];
   state.visibleEvidence = evidenceResult.evidence || state.evidence;
+  state.companyCorpus = companyCorpus;
   await refreshProductSummary();
   render();
   persistLocalWorkspace();
@@ -201,6 +230,7 @@ function render() {
   renderExportLinks();
   renderProductResults();
   renderConnectors();
+  renderCompanyCorpus();
   renderOverview();
   renderProductDetail();
   renderEvidenceExplorer();
@@ -211,6 +241,7 @@ function render() {
 
 function renderExportLinks() {
   elements.exportCsv.href = csvExportHref();
+  elements.exportCompanyCorpusCsv.href = `/api/export/company-corpus.csv${companyCorpusQuery()}`;
 }
 
 function csvExportHref() {
@@ -394,6 +425,20 @@ function renderConnectors() {
   }
 }
 
+function renderCompanyCorpus() {
+  const corpus = state.companyCorpus || {};
+  const records = Number(corpus.records || 0);
+  const sources = Number(corpus.sources || 0);
+  const contexts = Number(corpus.contexts || 0);
+  const scope = state.selectedProductId ? "selected product" : "all registry products";
+  const sourceLabel = selectedCorpusSourceLabel();
+  elements.companyCorpusSource.value = state.companyCorpusConnectorId;
+  elements.companyCorpusStatus.textContent = records
+    ? `${number(records)} saved ${sourceLabel} contexts from ${number(sources)} source records. Use saved corpus will match it against ${scope}.`
+    : `No saved ${sourceLabel} contexts yet. Run Batch 10y publications once to populate the local corpus.`;
+  elements.relinkCompanyCorpus.disabled = records === 0 || state.products.length === 0;
+}
+
 function renderProductDetail() {
   const product = selectedProduct();
   elements.detailTitle.textContent = product ? product.productName : "Product detail";
@@ -429,11 +474,21 @@ function renderEvidenceTable(container, records) {
     record.institution || "",
     (record.products || []).map((mention) => mention.productName).join(", ") || "Unmatched",
     record.contextLabel,
+    europePmcSentencesCell(record),
     reviewBadge(record.reviewStatus),
     percent(record.confidenceScore),
     reviewActions(record),
     provenance([record.id])
   ])));
+}
+
+function europePmcSentencesCell(record) {
+  const text = europePmcSentencesText(record);
+  if (!text) return "";
+  const node = document.createElement("p");
+  node.className = "europe-pmc-sentences";
+  node.textContent = text;
+  return node;
 }
 
 function sourceCell(record) {
@@ -528,20 +583,75 @@ async function saveProduct(event) {
     : await postJson("/api/products", payload);
   state.selectedProductId = result.product.id;
   state.filters.productId = result.product.id;
-  setMessage("Product saved.", "success");
+  setMessage(`Product saved.${corpusImportDetail(result.corpus)}`, result.corpus?.errors?.length ? "error" : "success");
   await refreshAll();
 }
 
 async function runAllConnectors() {
-  elements.runConnectors.disabled = true;
+  setConnectorButtonsDisabled(true);
   setMessage("Running source connectors. Imported records will remain candidate evidence until reviewed.", "");
   try {
     const run = await postJson("/api/connectors/run", {});
     const detail = run.errors?.length ? ` ${run.errors.slice(0, 2).join(" ")}` : "";
-    setMessage(`Connector run imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}`, run.errors?.length ? "error" : "success");
+    setMessage(`Connector run imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
     await refreshAll();
   } finally {
-    elements.runConnectors.disabled = false;
+    setConnectorButtonsDisabled(false);
+  }
+}
+
+async function runBatchDeepPublicationSearch() {
+  if (!state.products.length) {
+    setMessage("Import products before running batch deep publication search.", "error");
+    return;
+  }
+  const confirmed = confirm(`Run deep publication search for ${state.products.length} products? This may take a while and imported records will remain candidates until reviewed.`);
+  if (!confirmed) return;
+  setConnectorButtonsDisabled(true);
+  setMessage(`Running deep publication search for ${state.products.length} products. Imported records remain low-confidence candidates until reviewed.`, "");
+  try {
+    const run = await postJson("/api/connectors/run", {
+      connectorIds: PUBLICATION_CONNECTOR_IDS,
+      productIds: state.products.map((product) => product.id),
+      searchMode: "deep",
+      perProductLimit: 10
+    });
+    const detail = run.errors?.length
+      ? ` ${run.errors.slice(0, 2).join(" ")}`
+      : run.notices?.length
+        ? ` ${run.notices.slice(0, 2).join(" ")}`
+        : "";
+    setMessage(`Batch deep publication search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
+    await refreshAll();
+  } finally {
+    setConnectorButtonsDisabled(false);
+  }
+}
+
+async function runBatchEuropePmc10ySearch() {
+  const productScope = state.products.length
+    ? `${state.products.length} registry product${state.products.length === 1 ? "" : "s"}`
+    : "the saved company corpus before products are imported";
+  const confirmed = confirm(`Search all Genecopoeia-matching PubMed, Europe PMC, bioRxiv, and Crossref records from the last 10 years for ${productScope}? This can take a long time. Saved corpus rows are local candidate context, and product-linked imports remain candidates until reviewed.`);
+  if (!confirmed) return;
+  setConnectorButtonsDisabled(true);
+  setMessage(`Running 10-year PubMed, Europe PMC, bioRxiv, and Crossref search for ${productScope}. The app will save GeneCopoeia contexts into the local corpus.`, "");
+  try {
+    const run = await postJson("/api/connectors/run", {
+      connectorIds: TEN_YEAR_PUBLICATION_CONNECTOR_IDS,
+      productIds: state.products.map((product) => product.id),
+      searchMode: "exhaustive10y",
+      perProductLimit: 1000
+    });
+    const detail = run.errors?.length
+      ? ` ${run.errors.slice(0, 2).join(" ")}`
+      : run.notices?.length
+        ? ` ${run.notices.slice(0, 2).join(" ")}`
+        : "";
+    setMessage(`10-year publication search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
+    await refreshAll();
+  } finally {
+    setConnectorButtonsDisabled(false);
   }
 }
 
@@ -551,6 +661,8 @@ async function runSelectedProductSearch() {
     return;
   }
   elements.runSelectedProduct.disabled = true;
+  elements.runDeepPublicationSearch.disabled = true;
+  elements.runEuropePmc10ySearch.disabled = true;
   setMessage("Searching enabled sources for the selected product. Imported records remain candidates until reviewed.", "");
   try {
     const run = await postJson("/api/connectors/run", {
@@ -561,10 +673,12 @@ async function runSelectedProductSearch() {
       : run.notices?.length
         ? ` ${run.notices.slice(0, 2).join(" ")}`
         : "";
-    setMessage(`Selected-product search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}`, run.errors?.length ? "error" : "success");
+    setMessage(`Selected-product search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
     await refreshAll();
   } finally {
     elements.runSelectedProduct.disabled = false;
+    elements.runDeepPublicationSearch.disabled = false;
+    elements.runEuropePmc10ySearch.disabled = false;
   }
 }
 
@@ -575,6 +689,7 @@ async function runDeepPublicationSearch() {
   }
   elements.runSelectedProduct.disabled = true;
   elements.runDeepPublicationSearch.disabled = true;
+  elements.runEuropePmc10ySearch.disabled = true;
   setMessage("Running deep publication search for the selected product. Imported hits remain low-confidence candidates until reviewed.", "");
   try {
     const run = await postJson("/api/connectors/run", {
@@ -588,19 +703,106 @@ async function runDeepPublicationSearch() {
       : run.notices?.length
         ? ` ${run.notices.slice(0, 2).join(" ")}`
         : "";
-    setMessage(`Deep publication search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}`, run.errors?.length ? "error" : "success");
+    setMessage(`Deep publication search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
     await refreshAll();
   } finally {
     elements.runSelectedProduct.disabled = false;
     elements.runDeepPublicationSearch.disabled = false;
+    elements.runEuropePmc10ySearch.disabled = false;
   }
+}
+
+async function runEuropePmc10ySearch() {
+  if (!state.selectedProductId) {
+    setMessage("Select a product before running 10-year Europe PMC and bioRxiv search.", "error");
+    return;
+  }
+  elements.runSelectedProduct.disabled = true;
+  elements.runDeepPublicationSearch.disabled = true;
+  elements.runEuropePmc10ySearch.disabled = true;
+  setMessage("Running 10-year PubMed, Europe PMC, bioRxiv, and Crossref search for the selected product. Imported hits remain low-confidence candidates until reviewed.", "");
+  try {
+    const run = await postJson("/api/connectors/run", {
+      connectorIds: TEN_YEAR_PUBLICATION_CONNECTOR_IDS,
+      productIds: [state.selectedProductId],
+      searchMode: "exhaustive10y",
+      perProductLimit: 1000
+    });
+    const detail = run.errors?.length
+      ? ` ${run.errors.slice(0, 2).join(" ")}`
+      : run.notices?.length
+        ? ` ${run.notices.slice(0, 2).join(" ")}`
+        : "";
+    setMessage(`10-year publication search imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
+    await refreshAll();
+  } finally {
+    elements.runSelectedProduct.disabled = false;
+    elements.runDeepPublicationSearch.disabled = false;
+    elements.runEuropePmc10ySearch.disabled = false;
+  }
+}
+
+function setConnectorButtonsDisabled(disabled) {
+  elements.runConnectors.disabled = disabled;
+  elements.runBatchDeepPublications.disabled = disabled;
+  elements.runBatchEuropePmc10y.disabled = disabled;
+  elements.relinkCompanyCorpus.disabled = disabled || Number(state.companyCorpus?.records || 0) === 0 || state.products.length === 0;
+}
+
+async function relinkSavedCompanyCorpus() {
+  const productId = activeProductId();
+  if (!state.companyCorpus?.records) {
+    setMessage(`No saved ${selectedCorpusSourceLabel()} corpus records are available. Run Batch 10y publications first.`, "error");
+    return;
+  }
+  if (!state.products.length) {
+    setMessage("Import products before using the saved publication corpus.", "error");
+    return;
+  }
+  if (!productId && state.products.length > 25) {
+    const confirmed = confirm(`Use the saved ${selectedCorpusSourceLabel()} corpus against all ${state.products.length} products? This is local-only, but it may import many candidate records.`);
+    if (!confirmed) return;
+  }
+  setConnectorButtonsDisabled(true);
+  const scopeText = productId ? "selected product" : "all registry products";
+  setMessage(`Searching the saved ${selectedCorpusSourceLabel()} corpus for ${scopeText}. Imported matches remain candidates until reviewed.`, "");
+  try {
+    const result = await postJson("/api/company-corpus/relink", {
+      productIds: productId ? [productId] : [],
+      connectorIds: selectedCorpusConnectorIds()
+    });
+    const detail = result.errors?.length ? ` ${result.errors.slice(0, 2).join(" ")}` : "";
+    setMessage(`Saved corpus search imported ${result.imported || 0} candidate record${result.imported === 1 ? "" : "s"} for ${scopeText}.${detail}`, result.errors?.length ? "error" : "success");
+    await refreshAll();
+  } finally {
+    setConnectorButtonsDisabled(false);
+  }
+}
+
+function runCorpusDetail(run) {
+  const saved = Number(run.corpusSaved || 0);
+  const linked = Number(run.corpusLinked || 0);
+  const total = Number(run.corpusTotal || 0);
+  if (!saved && !linked) return "";
+  const savedText = saved ? ` Saved ${saved} Europe PMC corpus record${saved === 1 ? "" : "s"}` : "";
+  const totalText = total ? ` (${total} total saved).` : ".";
+  const linkedText = linked ? ` Relinked ${linked} saved corpus candidate${linked === 1 ? "" : "s"} to current products.` : "";
+  return `${savedText}${saved ? totalText : ""}${linkedText}`;
+}
+
+function corpusImportDetail(corpus) {
+  if (!corpus) return "";
+  if (corpus.errors?.length) return ` ${corpus.errors.slice(0, 2).join(" ")}`;
+  const imported = Number(corpus.imported || 0);
+  if (!imported) return "";
+  return ` Relinked ${imported} saved Europe PMC corpus candidate${imported === 1 ? "" : "s"} for this product set.`;
 }
 
 async function runConnector(connectorId) {
   setMessage("Running connector. Imported records will remain candidate evidence until reviewed.", "");
   const run = await postJson(`/api/connectors/${encodeURIComponent(connectorId)}/run`, {});
   const detail = run.errors?.length ? ` ${run.errors.slice(0, 2).join(" ")}` : "";
-  setMessage(`Connector imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}`, run.errors?.length ? "error" : "success");
+  setMessage(`Connector imported ${run.imported} candidate record${run.imported === 1 ? "" : "s"}.${detail}${runCorpusDetail(run)}`, run.errors?.length ? "error" : "success");
   await refreshAll();
 }
 
@@ -623,9 +825,18 @@ async function importProductCatalog(event) {
     state.filters.productId = response.products[0].id;
     state.productPageIndex = pageIndexForItem(filteredProductsForSearch(), response.products[0].id, PRODUCT_PAGE_SIZE);
   }
-  setMessage(`Imported ${response.imported} product${response.imported === 1 ? "" : "s"} into local registry.${detail}`, response.errors?.length ? "error" : "success");
+  setMessage(`Imported ${response.imported} product${response.imported === 1 ? "" : "s"} into local registry.${detail}${corpusImportDetail(response.corpus)}`, response.errors?.length || response.corpus?.errors?.length ? "error" : "success");
   if (!response.errors?.length) elements.productCatalogPayload.value = "";
   await refreshAll();
+}
+
+async function loadProductCatalogFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  elements.productCatalogPayload.value = text;
+  elements.productCatalogFormat.value = file.name.toLowerCase().endsWith(".csv") ? "csv" : "json";
+  setMessage(`Loaded ${file.name} into product catalog import. Review, then import the catalog.`, "success");
 }
 
 async function reviewEvidence(id, reviewStatus) {
@@ -733,6 +944,27 @@ function filterQuery() {
   }
   const text = params.toString();
   return text ? `?${text}` : "";
+}
+
+function companyCorpusQuery() {
+  const params = new URLSearchParams();
+  if (state.companyCorpusConnectorId) params.set("connectorId", state.companyCorpusConnectorId);
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+function selectedCorpusConnectorIds() {
+  return state.companyCorpusConnectorId ? [state.companyCorpusConnectorId] : [];
+}
+
+function selectedCorpusSourceLabel() {
+  const labels = {
+    pubmed_publications: "PubMed",
+    europepmc_fulltext_publications: "Europe PMC",
+    biorxiv_preprints: "bioRxiv",
+    crossref_conferences: "Crossref"
+  };
+  return labels[state.companyCorpusConnectorId] || "publication";
 }
 
 function activeProductId() {

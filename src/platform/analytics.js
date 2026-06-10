@@ -1,3 +1,4 @@
+import { hasEuropePmcCompanyContext } from "./europePmcSentences.js";
 import { evidenceMatchesProduct } from "./evidenceFiltering.js";
 
 export function buildAnalytics(state, filters = {}) {
@@ -47,6 +48,7 @@ export function filterEvidence(evidence, products, filters = {}) {
   const productMap = new Map(products.map((product) => [product.id, product]));
   const filteredProduct = filters.productId ? productMap.get(filters.productId) : undefined;
   return evidence.filter((record) => {
+    if (!hasEuropePmcCompanyContext(record)) return false;
     if (filters.productId && !evidenceMatchesProduct(record, filteredProduct)) return false;
     if (filters.sourceType && record.sourceType !== filters.sourceType) return false;
     if (filters.reviewStatus && record.reviewStatus !== filters.reviewStatus) return false;

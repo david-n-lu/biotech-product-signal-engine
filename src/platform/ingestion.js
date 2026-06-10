@@ -83,6 +83,7 @@ export function normalizeEvidenceRecord(raw, products, index = 0) {
   const sourceId = clean(raw.sourceId || raw.source_id || raw.externalId || raw.source?.recordId);
   const date = normalizeDate(raw.date || raw.sourceDate || raw.source_date || raw.publishedAt || raw.source?.date);
   const snippet = clean(raw.snippet || raw.textSnippet || raw.text_snippet || raw.abstract || raw.text || raw.claim);
+  const europePmcSentences = clean(raw.europePmcSentences || raw.europe_pmc_sentences || raw.rawPayload?.europePmcSentences);
   const authors = normalizeList(raw.authors || raw.author || raw.source?.authors);
   const institution = clean(raw.institution || raw.account || raw.organization || raw.source?.institution);
   const lab = clean(raw.lab || raw.group || raw.source?.lab);
@@ -150,6 +151,7 @@ export function normalizeEvidenceRecord(raw, products, index = 0) {
       lab,
       country,
       snippet,
+      europePmcSentences: europePmcSentences || undefined,
       productMentionType,
       contextLabel,
       classifierConfidence: classifier.confidence,

@@ -6,6 +6,7 @@ import {
   normalizeSalesRecords
 } from "./ingestion.js";
 import { evidenceMatchesProduct } from "./evidenceFiltering.js";
+import { hasEuropePmcCompanyContext } from "./europePmcSentences.js";
 import { searchProducts } from "./matching.js";
 import { SYNTHETIC_DEMO_DATA } from "./sampleData.js";
 
@@ -113,6 +114,7 @@ export function createRepository(initialState = {}) {
         ? state.products.find((product) => product.id === filters.productId)
         : undefined;
       return clone(state.evidence.filter((record) => {
+        if (!hasEuropePmcCompanyContext(record)) return false;
         if (filters.productId && !evidenceMatchesProduct(record, filteredProduct)) return false;
         if (filters.sourceType && record.sourceType !== filters.sourceType) return false;
         if (filters.country && record.country !== filters.country) return false;
@@ -222,6 +224,13 @@ function normalizeProduct(input) {
     synonyms: normalizeList(input.synonyms),
     competitorEquivalents: normalizeList(input.competitorEquivalents || input.competitor_equivalents),
     internalOwner: clean(input.internalOwner || input.internal_owner),
+    productUrl: clean(input.productUrl || input.product_url),
+    datasheetUrl: clean(input.datasheetUrl || input.datasheet_url),
+    size: clean(input.size),
+    listPrice: clean(input.listPrice || input.list_price),
+    leadTime: clean(input.leadTime || input.lead_time),
+    shippingCondition: clean(input.shippingCondition || input.shipping_condition),
+    storageCondition: clean(input.storageCondition || input.storage_condition),
     createdAt: clean(input.createdAt) || now,
     updatedAt: clean(input.updatedAt) || now
   };

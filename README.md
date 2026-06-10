@@ -89,11 +89,14 @@ The schema is normalized for auditability and analytics: product mentions, compe
 - `GET /api/leads`
 - `GET /api/competitors`
 - `GET /api/alerts`
+- `GET /api/company-corpus`
+- `POST /api/company-corpus/relink`
 
-`POST /api/connectors/run` and `POST /api/connectors/:id/run` accept optional `productIds`, `connectorIds`, `searchMode: "standard" | "deep"`, and `perProductLimit` fields. Deep mode is intended for selected-product publication searches.
+`POST /api/connectors/run` and `POST /api/connectors/:id/run` accept optional `productIds`, `connectorIds`, `searchMode: "standard" | "deep" | "exhaustive10y"`, and `perProductLimit` fields. Deep mode is intended for selected-product publication searches. `exhaustive10y` is intended for PubMed, Europe PMC, bioRxiv, and Crossref searches over Genecopoeia/product-matching records from the last 10 years. During company-first sweeps, GeneCopoeia context records are saved to the local publication corpus as candidate context for future catalog matching.
 - `GET /api/export/evidence.csv`
 - `GET /api/export/products.csv`
 - `GET /api/export/products-evidence.csv`
+- `GET /api/export/company-corpus.csv`
 - `GET /api/export/report.html`
 
 Analytics endpoints accept filters: `productId`, `sourceType`, `country`, `applicationArea`, `startDate`, and `endDate`.
@@ -103,6 +106,8 @@ The CSV export follows the current selected product context. When a product is s
 The Products CSV export downloads the entire Product Registry into one file, including company, product name, catalog number, RRID, product type, application area, synonyms, competitor equivalents, internal owner, and timestamps.
 
 The Products + Evidence CSV export downloads one combined file for the entire Product Registry. Each row includes product fields plus linked evidence, confidence, review status, matched text, competitors, and provenance; products without evidence are still included with blank evidence fields.
+
+The saved corpus export downloads the locally cached GeneCopoeia 10-year publication corpus using the same product + evidence columns. Product columns stay blank until a registry product/catalog is matched; that does not mean the corpus is empty. Rows carry `connectorId`, so PubMed, Europe PMC, bioRxiv, and Crossref contexts can be filtered and exported together or separately. The Source Connectors panel shows saved corpus counts, has a source selector, and has a **Use saved corpus** button. If a product is selected, the button searches the selected saved corpus for that product; if no product is selected, it searches the selected saved corpus for all registry products. New products created, updated, or imported are also relinked against all saved corpus sources automatically. Run the full 10-year publication sweep monthly or yearly to refresh the corpus, then use product imports/relinking for day-to-day catalog searches without repeating the complete sweep.
 
 ## Evidence Ingestion
 
@@ -142,14 +147,14 @@ The Source Connectors panel can run automated searches on demand, and the server
 
 Connector searches are company-qualified by default. For example, a registry product named `CD28` is searched externally as `GeneCopoeia CD28`, and APIs that support structured terms receive this as `GeneCopoeia AND CD28`. This keeps automated imports focused on Genecopoeia-related product usage instead of broad biology-topic searches.
 
-The Product Detail view also has an opt-in **Deep publication search** mode for the selected product. It runs only publication connectors (`PubMed`, `Europe PMC`, and `bioRxiv`), expands cleaned product/company variants, requests up to 10 results per query, and pages PubMed beyond the first result window. These hits are still saved only as low-confidence `candidate` evidence until reviewed.
+The Product Detail view also has an opt-in **Deep publication search** mode for the selected product. It runs only publication connectors (`PubMed`, `Europe PMC`, and `bioRxiv`), expands cleaned product/company variants, requests up to 10 results per query, and pages PubMed beyond the first result window. The **10y publications** action runs Europe PMC and bioRxiv for the selected product. Europe PMC uses a company-first sweep: it searches all recent 10-year records for `GeneCopoeia`/`Gene Copoeia`, adds a 10-year `FIRST_PDATE` range, requests up to 1000 records per cursor page, follows Europe PMC `nextCursorMark` pagination until the matching company result stream ends, attempts full-text extraction when Europe PMC exposes full text, and only then locally links nearby sentence windows to product names, catalog numbers, RRIDs, or synonyms in the registry. bioRxiv uses the same 10-year date window and locally filters preprints for Genecopoeia/product co-mentions. These hits are still saved only as low-confidence `candidate` evidence until reviewed.
 
 A scientist must use the review action or `PUT /api/evidence/:id/review` to mark a candidate as `curated` before it becomes curated proof. Rejected candidates remain traceable but are visibly marked as rejected.
 
 Included connectors:
 
 - PubMed publications via NCBI E-utilities
-- [Europe PMC RESTful Web Service](https://europepmc.org/RestfulWebService) full-text publications for supplier/product mentions that PubMed abstracts can miss
+- [Europe PMC RESTful Web Service](https://europepmc.org/RestfulWebService) full-text publications for supplier/product mentions that PubMed abstracts can miss. For Europe PMC candidates, the connector copies only a short nearby sentence window around `GeneCopoeia`/`Gene Copoeia` and imports the record only when that window also contains the selected product name, catalog number, RRID, or synonym.
 - [bioRxiv API](https://api.biorxiv.org/) preprints, filtered locally for Genecopoeia/product co-mentions because the public endpoint is date-window based
 - USPTO / PatentsView patent search, disabled by default until a JSON patent endpoint or USPTO Open Data Portal access is configured
 - ClinicalTrials.gov v2 studies
@@ -213,7 +218,9 @@ Recommended fields:
 - `competitorEquivalents`
 - `internalOwner`
 
-After importing a catalog, use the paginated Product Registry search box to search locally by company, product name, catalog number, RRID, product type, application area, or synonym. The registry result pane is scrollable within each page; use Previous and Next to move through larger catalogs. Press Enter or click a product result to select it; the Product Detail and Evidence Explorer views then show only evidence linked to that product. The browser local workspace stores the last selected product and a per-product detail cache keyed by product ID, so selecting a saved product restores its registry fields and linked evidence context. Use **Run evidence search** on the selected product to query enabled source connectors only for that product, or **Deep publication search** to query publication sources more broadly while keeping all imported hits in the review queue.
+After importing a catalog, use the paginated Product Registry search box to search locally by company, product name, catalog number, RRID, product type, application area, or synonym. The registry result pane is scrollable within each page; use Previous and Next to move through larger catalogs. Press Enter or click a product result to select it; the Product Detail and Evidence Explorer views then show only evidence linked to that product. The browser local workspace stores the last selected product and a per-product detail cache keyed by product ID, so selecting a saved product restores its registry fields and linked evidence context. Use **Run evidence search** on the selected product to query enabled source connectors only for that product, **Deep publication search** to query publication sources more broadly, or **10y publications** to exhaustively page Europe PMC full-text matches and bioRxiv preprints from the last 10 years while keeping all imported hits in the review queue.
+
+The catalog importer accepts pasted JSON/CSV or a local CSV/JSON file. GeneCopoeia vendor catalog headers such as `Manufacturer SKU`, `Manufacturer`, `Product Name`, `Category`, `Product URL`, `Datasheet URL`, `Size`, `List price`, `Shipping condition`, and `Storage condition` are mapped into product registry fields. Use **Batch deep publications** in Source Connectors to run PubMed, Europe PMC, and bioRxiv deep publication search across every product currently in the local registry. Use **Batch 10y publications** to sweep all Europe PMC records mentioning GeneCopoeia/Gene Copoeia in the last 10 years, locally match nearby sentences back to every product currently in the registry, and page bioRxiv preprints from the same 10-year window, including newly imported products. Europe PMC candidates use the sentence-window extraction around `GeneCopoeia` for every product, including large imported catalogs; all hits remain low-confidence candidates until reviewed.
 
 ## Sales And Marketing Use
 

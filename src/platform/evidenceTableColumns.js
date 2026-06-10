@@ -4,6 +4,7 @@ export const EVIDENCE_TABLE_HEADERS = Object.freeze([
   "Institution",
   "Products",
   "Context",
+  "Europe PMC sentences",
   "Review",
   "Confidence",
   "Actions",

@@ -65,6 +65,7 @@ test("analytics product KPI and mentions use current product identity", () => {
         sourceId: "CURRENT",
         date: "2026-01-02",
         snippet: "Europe PMC matched GeneCopoeia PA001.",
+        europePmcSentences: "Cells were profiled with GeneCopoeia PA001 in the methods section.",
         products: [{
           productId: "GC-REUSED",
           productName: "OmicsArray Systemic array",

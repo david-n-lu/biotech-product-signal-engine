@@ -112,6 +112,7 @@ button.danger {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
 }
 
 .header-actions,
@@ -124,21 +125,31 @@ button.danger {
   justify-content: space-between;
 }
 
+.section-header h2,
+.section-header h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
   gap: 1rem;
   padding: 1rem clamp(1rem, 2.4vw, 2rem) 2rem;
+  overflow-x: clip;
 }
 
 .sidebar {
   display: grid;
   align-content: start;
   gap: 1rem;
+  min-width: 0;
 }
 
 .panel,
 .workspace {
+  min-width: 0;
+  max-width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -227,10 +238,11 @@ textarea {
 
 .pager {
   display: grid;
-  grid-template-columns: minmax(5.5rem, auto) 1fr minmax(5.5rem, auto);
+  grid-template-columns: minmax(4.8rem, auto) minmax(0, 1fr) minmax(4.8rem, auto);
   align-items: center;
   gap: 0.45rem;
   margin: -0.35rem 0 1rem;
+  min-width: 0;
 }
 
 .pager .count {
@@ -272,6 +284,38 @@ textarea {
   border-radius: 8px;
   background: #fff;
   padding: 0.7rem;
+}
+
+.corpus-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fbfa;
+  padding: 0.7rem;
+  margin-bottom: 0.75rem;
+}
+
+.corpus-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.corpus-actions select,
+.corpus-actions button {
+  width: 100%;
+  min-width: 0;
+}
+
+.corpus-card .helper {
+  margin: 0.2rem 0 0;
 }
 
 .connector-card.disabled {
@@ -322,6 +366,7 @@ textarea {
 .result-row {
   display: grid;
   justify-items: start;
+  min-width: 0;
   min-height: auto;
   border-color: var(--line);
   background: #fff;
@@ -338,8 +383,20 @@ textarea {
 }
 
 .result-row span {
+  min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.result-row strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.result-row span {
+  overflow-wrap: anywhere;
 }
 
 .message,
@@ -524,6 +581,13 @@ td {
   text-align: left;
   vertical-align: top;
   font-size: 0.88rem;
+}
+
+.europe-pmc-sentences {
+  max-width: 22rem;
+  margin: 0;
+  color: #314650;
+  line-height: 1.35;
 }
 
 th {

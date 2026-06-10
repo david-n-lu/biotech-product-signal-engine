@@ -29,6 +29,28 @@ test("product catalog CSV parser maps rows into product records", () => {
   assert.equal(result.products[0].catalogNumber, "mAb-00712");
 });
 
+test("product catalog CSV parser maps GeneCopoeia vendor catalog headers", () => {
+  const csv = [
+    "Part ID,Manufacturer SKU,Manufacturer,Product Name,Description,Size,List price ,Product URL,Datasheet URL,Category,Shipping condition,Storage condition",
+    "AA001-025,AA001-025,GeneCopoeia,\"eGFP-AV01 AAVPrime" + "\uFFFD" + " Purified AAV Particles (Old Cat # AA001)\",\"AAV particles\",25 ul,$379,https://www.genecopoeia.com/product/aavprime,https://www.genecopoeia.com/protocol.pdf,Premade AAV particle,Dry ice,-80 C"
+  ].join("\n");
+  const result = parseProductCatalogCsv(csv);
+  const repository = createRepository();
+  const imported = repository.importProducts(result.products);
+  const product = repository.snapshot().products[0];
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.products[0].company, "GeneCopoeia");
+  assert.equal(result.products[0].productName, "eGFP-AV01 AAVPrime Purified AAV Particles (Old Cat # AA001)");
+  assert.equal(result.products[0].catalogNumber, "AA001-025");
+  assert.equal(result.products[0].productType, "Premade AAV particle");
+  assert.equal(result.products[0].applicationArea, "Premade AAV particle");
+  assert.deepEqual(result.products[0].synonyms, ["AA001"]);
+  assert.equal(imported.imported, 1);
+  assert.equal(product.productUrl, "https://www.genecopoeia.com/product/aavprime");
+  assert.equal(product.storageCondition, "-80 C");
+});
+
 test("repository can restore a locally persisted workspace snapshot", () => {
   const repository = createRepository();
   const restored = repository.restoreSnapshot({

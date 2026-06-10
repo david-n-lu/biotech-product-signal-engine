@@ -1,8 +1,9 @@
 import { evidenceForProduct } from "./evidenceFiltering.js";
+import { hasEuropePmcCompanyContext } from "./europePmcSentences.js";
 
 export function buildLocalWorkspaceSnapshot(state, now = new Date()) {
   const products = clone(state.products || []);
-  const evidence = clone(state.evidence || []);
+  const evidence = clone((state.evidence || []).filter(hasEuropePmcCompanyContext));
   const salesRecords = clone(state.salesRecords || []);
   const selectedProductId = clean(state.selectedProductId);
 

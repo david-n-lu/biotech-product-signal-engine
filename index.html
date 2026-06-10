@@ -17,6 +17,7 @@
         <button id="resetData" type="button" class="ghost">Reset</button>
         <a id="exportProductsCsv" class="button secondary" href="/api/export/products.csv">Export products</a>
         <a id="exportProductsEvidenceCsv" class="button secondary" href="/api/export/products-evidence.csv">Export products + evidence</a>
+        <a id="exportCompanyCorpusCsv" class="button secondary" href="/api/export/company-corpus.csv">Export saved corpus</a>
         <a id="exportCsv" class="button secondary" href="/api/export/evidence.csv">Export evidence</a>
         <a id="exportReport" class="button" href="/api/export/report.html" target="_blank" rel="noreferrer">PDF-ready report</a>
       </div>
@@ -49,8 +50,12 @@
               </select>
             </div>
             <label>
+              Catalog file
+              <input id="productCatalogFile" type="file" accept=".csv,.json,text/csv,application/json">
+            </label>
+            <label>
               Product catalog
-              <textarea id="productCatalogPayload" rows="4" spellcheck="false" placeholder="Paste GeneCopoeia product JSON or CSV. Required: productName, productType, applicationArea."></textarea>
+              <textarea id="productCatalogPayload" rows="4" spellcheck="false" placeholder="Paste GeneCopoeia product JSON or CSV, or choose a file above."></textarea>
             </label>
             <button type="submit" class="secondary">Import product catalog</button>
           </form>
@@ -105,9 +110,29 @@
         <section class="panel">
           <div class="section-header">
             <h2>Source Connectors</h2>
-            <button id="runConnectors" type="button" class="secondary">Run all</button>
+            <div class="button-row">
+              <button id="runConnectors" type="button" class="secondary">Run all</button>
+              <button id="runBatchDeepPublications" type="button" class="secondary">Batch deep publications</button>
+              <button id="runBatchEuropePmc10y" type="button" class="secondary">Batch 10y publications</button>
+            </div>
           </div>
           <p class="helper">Automated hits import as low-confidence candidates until reviewed.</p>
+          <div class="corpus-card">
+            <div>
+              <strong>Saved publication corpus</strong>
+              <p id="companyCorpusStatus" class="helper">No saved corpus loaded.</p>
+            </div>
+            <div class="corpus-actions">
+              <select id="companyCorpusSource" aria-label="Saved corpus source">
+                <option value="">All sources</option>
+                <option value="europepmc_fulltext_publications">Europe PMC</option>
+                <option value="pubmed_publications">PubMed</option>
+                <option value="biorxiv_preprints">bioRxiv</option>
+                <option value="crossref_conferences">Crossref</option>
+              </select>
+              <button id="relinkCompanyCorpus" type="button" class="secondary">Use saved corpus</button>
+            </div>
+          </div>
           <div id="connectorList" class="connector-list"></div>
         </section>
 
@@ -239,6 +264,7 @@
               <select id="detailProduct"></select>
               <button id="runSelectedProduct" type="button" class="secondary">Run evidence search</button>
               <button id="runDeepPublicationSearch" type="button" class="secondary">Deep publication search</button>
+              <button id="runEuropePmc10ySearch" type="button" class="secondary">10y publications</button>
             </div>
           </div>
           <div id="productSummary" class="summary-grid"></div>
